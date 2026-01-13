@@ -18,6 +18,9 @@ volumes/
 *.log
 logs/
 
+# md files
+*.md
+
 # Temporary files
 *.tmp
 *.temp
