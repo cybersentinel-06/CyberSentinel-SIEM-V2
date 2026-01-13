@@ -1,0 +1,64 @@
+# CyberSentinel .gitignore
+
+# Environment files (NEVER commit secrets!)
+.env
+*.env
+!.env.example
+
+# Backup files
+*.backup
+backups/
+*.tar.gz
+*.zip
+
+# Docker volumes data (managed by Docker)
+volumes/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# IDE files
+.idea/
+.vscode/
+*.sublime-*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# SSL certificates (if any)
+*.pem
+*.key
+*.crt
+*.csr
+
+# Secrets
+secrets/
+*.secret
+
+# Local testing
+test/
+tmp/

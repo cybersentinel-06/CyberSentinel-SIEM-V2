@@ -1,0 +1,245 @@
+version: '3.8'
+
+# CyberSentinel + Graylog - Production SIEM Stack
+# Integrated deployment with Wazuh Manager + Graylog + ELK
+
+services:
+  # ========================================
+  # CyberSentinel Manager (Wazuh Manager)
+  # ========================================
+  cybersentinel-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        WAZUH_VERSION: 4.14.0
+    container_name: cybersentinel-manager
+    hostname: cybersentinel-manager
+    restart: unless-stopped
+
+    ports:
+      # Agent communication (required)
+      - "1514:1514/tcp"     # Agent events
+      - "1515:1515/tcp"     # Agent registration
+      # API (optional, for management)
+      - "55000:55000/tcp"   # CyberSentinel API
+      # Syslog (optional, for external log collection)
+      - "514:514/udp"       # Syslog UDP
+      - "514:514/tcp"       # Syslog TCP
+
+    volumes:
+      # Persistent data - CRITICAL for production
+      - cybersentinel-data:/var/ossec/data
+      - cybersentinel-logs:/var/ossec/logs
+      - cybersentinel-queue:/var/ossec/queue
+      - cybersentinel-etc:/var/ossec/etc
+      - cybersentinel-integrations:/var/ossec/integrations
+      - cybersentinel-api-configuration:/var/ossec/api/configuration
+      - cybersentinel-agentless:/var/ossec/agentless
+      - cybersentinel-wodles:/var/ossec/wodles
+      - cybersentinel-stats:/var/ossec/stats
+
+      # Shared alerts for Fluent Bit
+      - shared-alerts:/var/ossec/logs/alerts
+
+    environment:
+      # API credentials
+      - INDEXER_URL=https://cybersentinel-manager:9200
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=${INDEXER_PASSWORD:-SecurePassword123!}
+      - FILEBEAT_SSL_VERIFICATION_MODE=none
+
+    networks:
+      - cybersentinel-network
+
+    healthcheck:
+      test: ["CMD-SHELL", "/var/ossec/bin/wazuh-control status | grep -q 'is running' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+    security_opt:
+      - no-new-privileges:true
+
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  # ========================================
+  # MongoDB - Graylog Metadata Store
+  # ========================================
+  mongodb:
+    image: mongo:8.0.5
+    container_name: mongodb
+    hostname: mongodb
+    restart: unless-stopped
+
+    environment:
+      - TZ=Asia/Kolkata
+
+    volumes:
+      - mongodb-data:/data/db
+
+    networks:
+      - cybersentinel-network
+
+    security_opt:
+      - no-new-privileges:true
+
+  # ========================================
+  # Elasticsearch - Graylog Data Store
+  # ========================================
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch-oss:7.10.2
+    container_name: elasticsearch
+    hostname: elasticsearch
+    restart: unless-stopped
+
+    environment:
+      - TZ=Asia/Kolkata
+      - http.host=0.0.0.0
+      - transport.host=localhost
+      - network.host=0.0.0.0
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - discovery.type=single-node
+      - cluster.name=graylog
+
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+
+    networks:
+      - cybersentinel-network
+
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+
+    security_opt:
+      - no-new-privileges:true
+
+  # ========================================
+  # Graylog - SIEM Log Management & Analytics
+  # ========================================
+  graylog:
+    image: graylog/graylog:6.1
+    container_name: graylog
+    hostname: graylog
+    restart: unless-stopped
+
+    depends_on:
+      - mongodb
+      - elasticsearch
+
+    entrypoint: /usr/bin/tini -- wait-for-it elasticsearch:9200 -- /docker-entrypoint.sh
+
+    environment:
+      - TZ=Asia/Kolkata
+      - GRAYLOG_PASSWORD_SECRET=${GRAYLOG_PASSWORD_SECRET:-forpasswordencryptionatleast64characters1234567890123456789012}
+      - GRAYLOG_ROOT_PASSWORD_SHA2=${GRAYLOG_ROOT_PASSWORD_SHA2:-8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918}
+      - GRAYLOG_HTTP_EXTERNAL_URI=${GRAYLOG_HTTP_EXTERNAL_URI:-http://127.0.0.1:9000/}
+      - GRAYLOG_MONGODB_URI=mongodb://mongodb:27017/graylog
+      - GRAYLOG_ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+
+    ports:
+      - "9000:9000/tcp"     # Graylog Web UI
+      - "12201:12201/tcp"   # GELF TCP
+      - "12201:12201/udp"   # GELF UDP
+      - "5555:5555/tcp"     # RAW TCP
+      - "5555:5555/udp"     # RAW UDP
+      - "5140:5140/tcp"     # Syslog TCP
+      - "5140:5140/udp"     # Syslog UDP
+      - "5044:5044/tcp"     # Beats
+
+    volumes:
+      - graylog-data:/usr/share/graylog/data
+      - graylog-journal:/usr/share/graylog/data/journal
+
+    networks:
+      - cybersentinel-network
+
+    security_opt:
+      - no-new-privileges:true
+
+  # ========================================
+  # Fluent Bit - Log Forwarder to Graylog
+  # ========================================
+  fluent-bit:
+    image: fluent/fluent-bit:3.0
+    container_name: fluent-bit
+    hostname: fluent-bit
+    restart: unless-stopped
+
+    depends_on:
+      cybersentinel-manager:
+        condition: service_healthy
+      graylog:
+        condition: service_started
+
+    volumes:
+      # Read-only access to Wazuh alerts
+      - shared-alerts:/var/ossec/logs/alerts:ro
+      # Fluent Bit configuration
+      - ./fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+
+    networks:
+      - cybersentinel-network
+
+    security_opt:
+      - no-new-privileges:true
+
+# ========================================
+# Networks
+# ========================================
+networks:
+  cybersentinel-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
+
+# ========================================
+# Volumes (Persistent Data)
+# ========================================
+volumes:
+  # CyberSentinel Manager volumes
+  cybersentinel-data:
+    driver: local
+  cybersentinel-logs:
+    driver: local
+  cybersentinel-queue:
+    driver: local
+  cybersentinel-etc:
+    driver: local
+  cybersentinel-integrations:
+    driver: local
+  cybersentinel-api-configuration:
+    driver: local
+  cybersentinel-agentless:
+    driver: local
+  cybersentinel-wodles:
+    driver: local
+  cybersentinel-stats:
+    driver: local
+
+  # Shared volume for alerts
+  shared-alerts:
+    driver: local
+
+  # Graylog stack volumes
+  mongodb-data:
+    driver: local
+  elasticsearch-data:
+    driver: local
+  graylog-data:
+    driver: local
+  graylog-journal:
+    driver: local

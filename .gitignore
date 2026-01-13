@@ -1,0 +1,26 @@
+# Here we are listing all the other directories except the cybersentinel-manager/
+
+# Directories
+.git/
+.claude/
+
+# Files
+ACTION-REQUIRED.txt
+cybersentinel-collector.sh
+cybersentinel-deploy-master.sh
+cybersentinel-postinstall-local.sh
+example-usage.sh
+FIX-GITHUB-ACCESS.md
+INTEGRATION-CODE-BLOCK.sh
+POST-INSTALL-GUIDE.md
+QUICK-DEPLOY.md
+QUICK-START.md
+quick-test.sh
+README-POSTINSTALL.md
+TEST-RESULTS.txt
+troubleshoot-github.sh
+TROUBLESHOOTING-SUMMARY.md
+verify-wrapper.sh
+VISUAL-TEST-PROOF.txt
+WRAPPER-QUICK-REFERENCE.md
+

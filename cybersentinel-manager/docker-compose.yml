@@ -1,0 +1,171 @@
+version: '3.8'
+
+services:
+  # =================================================
+  # CyberSentinel Manager (Wazuh Manager)
+  # =================================================
+  cybersentinel-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        WAZUH_VERSION: 4.14.0
+    image: cybersentinel/manager:4.14.0
+    container_name: cybersentinel-manager
+    hostname: cybersentinel-manager
+    restart: unless-stopped
+
+    ports:
+      - "1514:1514/tcp"
+      - "1515:1515/tcp"
+      - "55000:55000/tcp"
+      - "514:514/udp"
+      - "514:514/tcp"
+
+    volumes:
+      - cybersentinel-data:/var/ossec/data
+      - cybersentinel-logs:/var/ossec/logs
+      - cybersentinel-queue:/var/ossec/queue
+      - cybersentinel-etc:/var/ossec/etc
+      - cybersentinel-integrations:/var/ossec/integrations
+      - cybersentinel-api-configuration:/var/ossec/api/configuration
+      - cybersentinel-agentless:/var/ossec/agentless
+      - cybersentinel-wodles:/var/ossec/wodles
+      - cybersentinel-stats:/var/ossec/stats
+      - shared-alerts:/var/ossec/logs/alerts
+
+    environment:
+      INDEXER_URL: https://cybersentinel-manager:9200
+      INDEXER_USERNAME: admin
+      INDEXER_PASSWORD: ${INDEXER_PASSWORD:-SecurePassword123!}
+      FILEBEAT_SSL_VERIFICATION_MODE: none
+
+    healthcheck:
+      test: ["CMD-SHELL", "/var/ossec/bin/wazuh-control status | grep -q 'is running'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - cybersentinel-network
+
+  # =================================================
+  # MongoDB
+  # =================================================
+  mongodb:
+    image: mongo:8.0.5
+    container_name: mongodb
+    restart: unless-stopped
+    volumes:
+      - mongodb-data:/data/db
+    networks:
+      - cybersentinel-network
+
+  # =================================================
+  # Elasticsearch (Graylog backend)
+  # =================================================
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch-oss:7.10.2
+    container_name: elasticsearch
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    networks:
+      - cybersentinel-network
+
+  # =================================================
+  # Graylog
+  # =================================================
+  graylog:
+    image: graylog/graylog:6.1
+    container_name: graylog
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+      - elasticsearch
+
+    environment:
+      GRAYLOG_PASSWORD_SECRET: ${GRAYLOG_PASSWORD_SECRET}
+      GRAYLOG_ROOT_PASSWORD_SHA2: ${GRAYLOG_ROOT_PASSWORD_SHA2}
+      GRAYLOG_HTTP_EXTERNAL_URI: http://127.0.0.1:9000/
+      GRAYLOG_MONGODB_URI: mongodb://mongodb:27017/graylog
+      GRAYLOG_ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+
+    ports:
+      - "9000:9000"
+      - "5555:5555/tcp"
+
+    volumes:
+      - graylog-data:/usr/share/graylog/data
+      - graylog-journal:/usr/share/graylog/data/journal
+
+    networks:
+      - cybersentinel-network
+
+  # =================================================
+  # Fluent Bit (CUSTOM IMAGE)
+  # =================================================
+  fluent-bit:
+    image: cybersentinel/fluent-bit:1.0
+    container_name: fluent-bit
+    restart: unless-stopped
+
+    depends_on:
+      cybersentinel-manager:
+        condition: service_healthy
+      graylog:
+        condition: service_started
+
+    volumes:
+      - shared-alerts:/var/ossec/logs/alerts:ro
+
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=50m
+
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - cybersentinel-network
+
+# =================================================
+# Network
+# =================================================
+networks:
+  cybersentinel-network:
+    driver: bridge
+
+# =================================================
+# Volumes
+# =================================================
+volumes:
+  cybersentinel-data:
+  cybersentinel-logs:
+  cybersentinel-queue:
+  cybersentinel-etc:
+  cybersentinel-integrations:
+  cybersentinel-api-configuration:
+  cybersentinel-agentless:
+  cybersentinel-wodles:
+  cybersentinel-stats:
+  shared-alerts:
+
+  mongodb-data:
+  elasticsearch-data:
+  graylog-data:
+  graylog-journal:

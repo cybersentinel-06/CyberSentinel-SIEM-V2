@@ -1,0 +1,396 @@
+================================================================================
+CYBERSENTINEL CONTROL WRAPPER - FINAL IMPLEMENTATION
+================================================================================
+
+REQUIREMENT: Option 3 – Wrapper Approach
+STATUS: ✓ COMPLETE
+
+================================================================================
+DELIVERABLE 1: CYBERSENTINEL-CONTROL WRAPPER SCRIPT
+================================================================================
+
+FILE: cybersentinel-control
+SIZE: 11K (362 lines)
+LOCATION (HOST): /home/soc/Docker-CyberSentinel/cybersentinel-control
+LOCATION (CONTAINER): /usr/local/bin/cybersentinel-control
+
+COMMANDS SUPPORTED:
+  ✓ cybersentinel-control start       - Start all services
+  ✓ cybersentinel-control stop        - Stop all services
+  ✓ cybersentinel-control restart     - Restart all services
+  ✓ cybersentinel-control status      - Show service status
+  ✓ cybersentinel-control info        - Display system information
+  ✓ All commands support --debug flag
+
+NORMAL MODE OUTPUT (NO "wazuh" VISIBLE):
+────────────────────────────────────────────────────────────────────────────────
+$ docker exec cybersentinel-manager cybersentinel-control restart
+
+[CyberSentinel] Stopping CyberSentinel Manager services...
+✓ Services stopped
+[CyberSentinel] Starting CyberSentinel Manager services...
+✓ Services started successfully
+
+[CyberSentinel] CyberSentinel Manager v4.14.0 - Service Status
+
+  ● Module Manager                running
+  ● System Monitor                running
+  ● Log Collector                 running
+  ● Agent Communication           running
+  ● File Integrity Monitor        running
+  ● Security Analytics Engine     running
+  ● Database Manager              running
+  ● Agent Authentication          running
+
+✓ CyberSentinel Manager is fully operational
+────────────────────────────────────────────────────────────────────────────────
+
+DEBUG MODE OUTPUT ("wazuh" VISIBLE):
+────────────────────────────────────────────────────────────────────────────────
+$ docker exec cybersentinel-manager cybersentinel-control restart --debug
+
+[CyberSentinel] Restarting services (debug mode)...
+
+Killing wazuh-modulesd...
+Killing wazuh-monitord...
+Killing wazuh-logcollector...
+Killing wazuh-remoted...
+Killing wazuh-syscheckd...
+Killing wazuh-analysisd...
+Killing wazuh-db...
+Killing wazuh-authd...
+Wazuh v4.14.0 Stopped
+Started wazuh-maild...
+Started wazuh-execd...
+Started wazuh-analysisd...
+Started wazuh-logcollector...
+Started wazuh-remoted...
+Started wazuh-syscheckd...
+Started wazuh-monitord...
+Started wazuh-db...
+Started wazuh-modulesd...
+Started wazuh-authd...
+Completed.
+────────────────────────────────────────────────────────────────────────────────
+
+================================================================================
+DELIVERABLE 2: INTEGRATION CODE BLOCK
+================================================================================
+
+FILE: cybersentinel-deploy-master.sh
+FUNCTION: deploy_control_wrapper()
+LINES: 336-402 (67 lines)
+STATUS: ✓ ALREADY INTEGRATED
+
+INTEGRATION POINT IN main():
+────────────────────────────────────────────────────────────────────────────────
+Line 577: deploy_control_wrapper()
+────────────────────────────────────────────────────────────────────────────────
+
+EXECUTION FLOW:
+────────────────────────────────────────────────────────────────────────────────
+Phase 1:   check_prerequisites()         # Validate Docker, Compose, files
+Phase 2:   deploy_containers()            # Build images, start containers
+Phase 3:   wait_for_container_healthy()  # Wait for health checks
+           verify_wazuh_services()        # Verify services running
+Phase 4:   run_postinstall()              # Deploy configurations from GitHub
+Phase 4.5: deploy_control_wrapper()       ← WRAPPER DEPLOYED HERE
+Phase 5:   final_verification()           # Final checks
+           display_summary()              # Show access info & commands
+────────────────────────────────────────────────────────────────────────────────
+
+WRAPPER DEPLOYMENT STEPS (Phase 4.5):
+────────────────────────────────────────────────────────────────────────────────
+1. Validate wrapper exists on host: test -f cybersentinel-control
+2. Copy to container: docker cp cybersentinel-control → /usr/local/bin/
+3. Set permissions: docker exec chmod 755
+4. Set ownership: docker exec chown root:root
+5. Verify executable: docker exec test -x
+6. Test functionality: docker exec cybersentinel-control status
+7. Display usage instructions
+────────────────────────────────────────────────────────────────────────────────
+
+INTEGRATION CODE:
+────────────────────────────────────────────────────────────────────────────────
+deploy_control_wrapper() {
+    log_step "Phase 4.5: Deploying CyberSentinel Control Wrapper"
+    separator
+
+    local WRAPPER_SOURCE="${SCRIPT_DIR}/cybersentinel-control"
+    local WRAPPER_TARGET="/usr/local/bin/cybersentinel-control"
+
+    # Validate wrapper script exists on host
+    if [ ! -f "$WRAPPER_SOURCE" ]; then
+        log_error "Control wrapper not found: $WRAPPER_SOURCE"
+        log_info "This is required for branded service control"
+        return 1
+    fi
+
+    log_info "Injecting CyberSentinel control wrapper into container..."
+
+    # Copy wrapper to container
+    if docker cp "$WRAPPER_SOURCE" "${CONTAINER_NAME}:${WRAPPER_TARGET}" 2>&1; then
+        log_success "Wrapper copied to container: $WRAPPER_TARGET"
+    else
+        log_error "Failed to copy wrapper to container"
+        return 1
+    fi
+
+    # Set executable permissions
+    if docker exec "$CONTAINER_NAME" chmod 755 "$WRAPPER_TARGET" 2>&1; then
+        log_success "Wrapper permissions set (755)"
+    else
+        log_error "Failed to set wrapper permissions"
+        return 1
+    fi
+
+    # Set ownership to root:root
+    if docker exec "$CONTAINER_NAME" chown root:root "$WRAPPER_TARGET" 2>&1; then
+        log_success "Wrapper ownership set (root:root)"
+    else
+        log_warn "Failed to set wrapper ownership (may still work)"
+    fi
+
+    # Verify wrapper is executable
+    if docker exec "$CONTAINER_NAME" test -x "$WRAPPER_TARGET"; then
+        log_success "Wrapper deployed and executable"
+    else
+        log_error "Wrapper exists but is not executable"
+        return 1
+    fi
+
+    # Test wrapper functionality
+    log_info "Testing wrapper functionality..."
+    if docker exec "$CONTAINER_NAME" "$WRAPPER_TARGET" status >/dev/null 2>&1; then
+        log_success "Wrapper is operational"
+    else
+        log_warn "Wrapper test returned non-zero (services may be starting)"
+    fi
+
+    echo ""
+    log_info "CyberSentinel control wrapper is ready:"
+    echo ""
+    echo "  Usage inside container:"
+    echo "    docker exec $CONTAINER_NAME cybersentinel-control {start|stop|restart|status}"
+    echo ""
+    echo "  Debug mode (shows raw daemon output):"
+    echo "    docker exec $CONTAINER_NAME cybersentinel-control restart --debug"
+    echo ""
+    log_success "Control wrapper deployment complete!"
+    echo ""
+}
+────────────────────────────────────────────────────────────────────────────────
+
+WHY DEPLOYED IN PHASE 4.5:
+────────────────────────────────────────────────────────────────────────────────
+• AFTER containers are healthy (Phase 3)
+  → Ensures container is ready to receive files via docker cp
+
+• AFTER post-install completes (Phase 4)
+  → All configurations in place before wrapper is available
+
+• BEFORE final verification (Phase 5)
+  → Allows verification to use branded wrapper
+
+• Uses ONLY Docker-native commands
+  → docker cp (copy file to running container)
+  → docker exec (execute commands inside container)
+  → No image rebuild required
+  → Idempotent (safe to re-run)
+────────────────────────────────────────────────────────────────────────────────
+
+================================================================================
+DELIVERABLE 3: COMMENTS & EXPLANATIONS
+================================================================================
+
+INLINE COMMENTS IN FUNCTION:
+────────────────────────────────────────────────────────────────────────────────
+✓ Function header documents Phase 4.5 execution
+✓ Each step has descriptive comment explaining WHY
+✓ Error messages guide operator to resolution
+✓ Success messages confirm each operation
+✓ Usage instructions displayed after deployment
+✓ Log levels: INFO (action), SUCCESS (complete), ERROR (failure), WARN (non-critical)
+────────────────────────────────────────────────────────────────────────────────
+
+DOCUMENTATION FILES CREATED:
+────────────────────────────────────────────────────────────────────────────────
+✓ CONTROL-WRAPPER-IMPLEMENTATION.md     Complete technical documentation
+✓ WRAPPER-QUICK-REFERENCE.md            Command reference card
+✓ INTEGRATION-CODE-BLOCK.sh             Annotated integration code
+✓ IMPLEMENTATION-SUMMARY.txt            Executive summary
+✓ WRAPPER-IMPLEMENTATION-COMPLETE.txt   This file
+✓ verify-wrapper.sh                     Automated test suite
+────────────────────────────────────────────────────────────────────────────────
+
+================================================================================
+DELIVERABLE 4: VERIFICATION COMMANDS
+================================================================================
+
+AUTOMATED VERIFICATION:
+────────────────────────────────────────────────────────────────────────────────
+$ ./verify-wrapper.sh
+
+Tests Performed:
+  ✓ Container cybersentinel-manager is running
+  ✓ Wrapper exists at /usr/local/bin/cybersentinel-control
+  ✓ Wrapper is executable
+  ✓ Wrapper has correct permissions (755)
+  ✓ No "wazuh" appears in normal mode output
+  ✓ "wazuh" appears in debug mode output (as expected)
+  ✓ CyberSentinel branding present
+  ✓ All commands functional (start, stop, restart, status, info)
+────────────────────────────────────────────────────────────────────────────────
+
+MANUAL VERIFICATION - NO "wazuh" IN NORMAL MODE:
+────────────────────────────────────────────────────────────────────────────────
+$ docker exec cybersentinel-manager cybersentinel-control restart
+
+Expected: Only CyberSentinel-branded output (see DELIVERABLE 1 above)
+
+Verify no "wazuh" leakage:
+$ docker exec cybersentinel-manager cybersentinel-control restart 2>&1 | grep -i wazuh
+
+Expected: (empty - no output)
+────────────────────────────────────────────────────────────────────────────────
+
+MANUAL VERIFICATION - "wazuh" IN DEBUG MODE:
+────────────────────────────────────────────────────────────────────────────────
+$ docker exec cybersentinel-manager cybersentinel-control restart --debug
+
+Expected: Raw wazuh daemon output (see DELIVERABLE 1 above)
+
+Verify "wazuh" is visible:
+$ docker exec cybersentinel-manager cybersentinel-control restart --debug 2>&1 | grep -i wazuh
+
+Expected: Multiple matches (wazuh-modulesd, wazuh-db, "Wazuh v4.14.0", etc.)
+────────────────────────────────────────────────────────────────────────────────
+
+VERIFY WRAPPER EXISTS AND IS EXECUTABLE:
+────────────────────────────────────────────────────────────────────────────────
+$ docker exec cybersentinel-manager ls -lah /usr/local/bin/cybersentinel-control
+
+Expected: -rwxr-xr-x 1 root root 11K ... /usr/local/bin/cybersentinel-control
+────────────────────────────────────────────────────────────────────────────────
+
+TEST ALL COMMANDS:
+────────────────────────────────────────────────────────────────────────────────
+$ docker exec cybersentinel-manager cybersentinel-control status
+$ docker exec cybersentinel-manager cybersentinel-control info
+$ docker exec cybersentinel-manager cybersentinel-control start
+$ docker exec cybersentinel-manager cybersentinel-control stop
+$ docker exec cybersentinel-manager cybersentinel-control restart
+────────────────────────────────────────────────────────────────────────────────
+
+================================================================================
+CONSTRAINTS SATISFIED
+================================================================================
+
+✓ Production safe          - No experimental features, robust error handling
+✓ No sed hacks             - Pure delegation to wazuh-control
+✓ No binary patching       - Wrapper script only, binaries untouched
+✓ No systemd               - Pure shell script wrapper
+✓ Docker-only              - Uses docker cp and docker exec exclusively
+✓ Clean, readable code     - 362 lines, well-commented, modular functions
+✓ Enterprise-quality       - Follows shell scripting best practices
+✓ Upgrade-safe             - Wrapper delegates to native wazuh-control
+✓ No config modification   - Does not touch ossec.conf or any wazuh configs
+✓ No log modification      - Does not alter wazuh logs
+✓ Idempotent               - Safe to redeploy without side effects
+✓ Debug mode preserved     - --debug flag exposes raw output when needed
+
+================================================================================
+DEPLOYMENT INSTRUCTIONS
+================================================================================
+
+COMPLETE DEPLOYMENT (Wrapper auto-deployed in Phase 4.5):
+────────────────────────────────────────────────────────────────────────────────
+$ ./cybersentinel-deploy-master.sh
+────────────────────────────────────────────────────────────────────────────────
+
+MANUAL WRAPPER REDEPLOYMENT (if needed):
+────────────────────────────────────────────────────────────────────────────────
+$ docker cp cybersentinel-control cybersentinel-manager:/usr/local/bin/
+$ docker exec cybersentinel-manager chmod 755 /usr/local/bin/cybersentinel-control
+$ docker exec cybersentinel-manager chown root:root /usr/local/bin/cybersentinel-control
+────────────────────────────────────────────────────────────────────────────────
+
+VERIFICATION:
+────────────────────────────────────────────────────────────────────────────────
+$ ./verify-wrapper.sh
+────────────────────────────────────────────────────────────────────────────────
+
+================================================================================
+SERVICE NAME MAPPING (Daemon → Branded)
+================================================================================
+
+wazuh-modulesd       →  Module Manager
+wazuh-monitord       →  System Monitor
+wazuh-logcollector   →  Log Collector
+wazuh-remoted        →  Agent Communication
+wazuh-syscheckd      →  File Integrity Monitor
+wazuh-analysisd      →  Security Analytics Engine
+wazuh-maild          →  Alert Notification
+wazuh-execd          →  Active Response
+wazuh-authd          →  Agent Authentication
+wazuh-db             →  Database Manager
+wazuh-clusterd       →  Cluster Manager
+wazuh-integratord    →  Integration Daemon
+
+================================================================================
+TECHNICAL IMPLEMENTATION DETAILS
+================================================================================
+
+WRAPPER SCRIPT:
+  • Language: Bash with strict mode (set -euo pipefail)
+  • Size: 362 lines, 11K
+  • Functions: 9 (show_usage, 4 log helpers, get_branded_service_name,
+               4 execute functions, main)
+  • Color output: ANSI escape codes (works in docker exec)
+  • Service mapping: Case statement with 12 daemon mappings
+  • Output suppression: >/dev/null 2>&1 in normal mode
+  • Debug mode: Direct passthrough to wazuh-control
+  • Error handling: Exit codes preserved, friendly error messages
+
+DEPLOYMENT METHOD:
+  • Tool: docker cp (file copy to running container)
+  • Permissions: 755 (rwxr-xr-x) via docker exec chmod
+  • Ownership: root:root via docker exec chown
+  • Verification: test -x via docker exec
+  • Integration: Function in master deployment script
+  • Phase: 4.5 (post-install → wrapper → final verification)
+
+OPERATIONAL CHARACTERISTICS:
+  • Normal mode: Branded output only, no "wazuh" visible
+  • Debug mode: Full raw output, all "wazuh" references visible
+  • Commands: start, stop, restart, status, info
+  • Flags: --debug, -d, --help, -h
+  • Exit codes: Preserved from wazuh-control
+  • Status display: Color-coded with Unicode symbols (●, ✓, ✗, ⚠)
+
+================================================================================
+FILES SUMMARY
+================================================================================
+
+cybersentinel-control                   11K  Wrapper script (production-ready)
+cybersentinel-deploy-master.sh         24K  Master deployment (lines 336-402)
+verify-wrapper.sh                      6.5K  Automated verification suite
+CONTROL-WRAPPER-IMPLEMENTATION.md      6.3K  Technical documentation
+WRAPPER-QUICK-REFERENCE.md             4.2K  Command reference
+INTEGRATION-CODE-BLOCK.sh              5.8K  Annotated integration code
+IMPLEMENTATION-SUMMARY.txt             9.1K  Executive summary
+WRAPPER-IMPLEMENTATION-COMPLETE.txt    17K  This file (final deliverable)
+
+================================================================================
+IMPLEMENTATION STATUS: ✓ COMPLETE
+================================================================================
+
+All deliverables satisfied:
+  ✓ Wrapper script: cybersentinel-control (production-ready)
+  ✓ Integration code: cybersentinel-deploy-master.sh:336-402 (already integrated)
+  ✓ Comments: Inline + 5 documentation files
+  ✓ Verification: Automated script + manual commands
+
+Ready for production deployment.
+
+================================================================================

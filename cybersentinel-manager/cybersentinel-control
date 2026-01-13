@@ -1,0 +1,362 @@
+#!/usr/bin/env bash
+################################################################################
+# CyberSentinel Manager Control Wrapper
+#
+# Purpose: Branded wrapper around Wazuh control commands
+#          - Provides CyberSentinel-branded service management
+#          - Suppresses raw "wazuh" daemon names in normal operation
+#          - Exposes debug mode for troubleshooting
+#          - Production-safe, no binary patching, upgrade-safe
+#
+# Usage:
+#   cybersentinel-control {start|stop|restart|status|info} [--debug]
+#
+# Examples:
+#   cybersentinel-control restart          # Branded output only
+#   cybersentinel-control status --debug   # Shows raw daemon output
+#
+# Integration: Deployed via cybersentinel-deploy-master.sh
+# Location: /usr/local/bin/cybersentinel-control
+#
+# Author: CyberSentinel Security Team
+# Version: 1.0.0
+################################################################################
+
+set -euo pipefail
+
+# ========================================
+# Configuration
+# ========================================
+WAZUH_CONTROL="/var/ossec/bin/wazuh-control"
+WAZUH_BIN_DIR="/var/ossec/bin"
+PRODUCT_NAME="CyberSentinel Manager"
+VERSION="4.14.0"
+
+# ========================================
+# Color Definitions (optional, works in docker exec)
+# ========================================
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+RED='\033[0;31m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+# ========================================
+# Helper Functions
+# ========================================
+
+show_usage() {
+    cat << EOF
+${BOLD}CyberSentinel Manager Control${NC}
+
+Usage: cybersentinel-control {start|stop|restart|status|info} [--debug]
+
+Commands:
+  start      Start all CyberSentinel services
+  stop       Stop all CyberSentinel services
+  restart    Restart all CyberSentinel services
+  status     Show status of all services
+  info       Display service information
+
+Options:
+  --debug    Show raw daemon output (for troubleshooting)
+
+Examples:
+  cybersentinel-control restart          # Clean branded output
+  cybersentinel-control status --debug   # Shows underlying daemon details
+  cybersentinel-control info             # Display version and service info
+
+EOF
+}
+
+log_branded() {
+    echo -e "${CYAN}[CyberSentinel]${NC} $1"
+}
+
+log_success() {
+    echo -e "${GREEN}✓${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}✗${NC} $1"
+}
+
+log_warn() {
+    echo -e "${YELLOW}⚠${NC} $1"
+}
+
+# ========================================
+# Service Mapping
+# ========================================
+
+# Map Wazuh daemon names to CyberSentinel service names
+get_branded_service_name() {
+    local daemon_name="$1"
+
+    case "$daemon_name" in
+        wazuh-modulesd)
+            echo "Module Manager"
+            ;;
+        wazuh-monitord)
+            echo "System Monitor"
+            ;;
+        wazuh-logcollector)
+            echo "Log Collector"
+            ;;
+        wazuh-remoted)
+            echo "Agent Communication"
+            ;;
+        wazuh-syscheckd)
+            echo "File Integrity Monitor"
+            ;;
+        wazuh-analysisd)
+            echo "Security Analytics Engine"
+            ;;
+        wazuh-maild)
+            echo "Alert Notification"
+            ;;
+        wazuh-execd)
+            echo "Active Response"
+            ;;
+        wazuh-authd)
+            echo "Agent Authentication"
+            ;;
+        wazuh-db)
+            echo "Database Manager"
+            ;;
+        wazuh-clusterd)
+            echo "Cluster Manager"
+            ;;
+        wazuh-integratord)
+            echo "Integration Daemon"
+            ;;
+        *)
+            echo "$daemon_name" | sed 's/wazuh-//' | awk '{print toupper(substr($0,1,1)) tolower(substr($0,2))}'
+            ;;
+    esac
+}
+
+# ========================================
+# Command Execution Functions
+# ========================================
+
+execute_start() {
+    local debug_mode="$1"
+
+    if [ "$debug_mode" = "true" ]; then
+        log_branded "Starting services (debug mode)..."
+        echo ""
+        "$WAZUH_CONTROL" start
+    else
+        log_branded "Starting ${PRODUCT_NAME} services..."
+
+        # Execute silently and capture result
+        if "$WAZUH_CONTROL" start >/dev/null 2>&1; then
+            log_success "All services started successfully"
+            echo ""
+            execute_status false
+        else
+            log_error "Failed to start services"
+            log_warn "Run with --debug flag for details"
+            return 1
+        fi
+    fi
+}
+
+execute_stop() {
+    local debug_mode="$1"
+
+    if [ "$debug_mode" = "true" ]; then
+        log_branded "Stopping services (debug mode)..."
+        echo ""
+        "$WAZUH_CONTROL" stop
+    else
+        log_branded "Stopping ${PRODUCT_NAME} services..."
+
+        # Execute silently and capture result
+        if "$WAZUH_CONTROL" stop >/dev/null 2>&1; then
+            log_success "All services stopped"
+        else
+            log_error "Failed to stop services"
+            log_warn "Run with --debug flag for details"
+            return 1
+        fi
+    fi
+}
+
+execute_restart() {
+    local debug_mode="$1"
+
+    if [ "$debug_mode" = "true" ]; then
+        log_branded "Restarting services (debug mode)..."
+        echo ""
+        "$WAZUH_CONTROL" restart
+    else
+        log_branded "Stopping ${PRODUCT_NAME} services..."
+
+        # Stop silently
+        if "$WAZUH_CONTROL" stop >/dev/null 2>&1; then
+            log_success "Services stopped"
+        else
+            log_warn "Stop returned non-zero (may already be stopped)"
+        fi
+
+        sleep 2
+
+        log_branded "Starting ${PRODUCT_NAME} services..."
+
+        # Start silently
+        if "$WAZUH_CONTROL" start >/dev/null 2>&1; then
+            log_success "Services started successfully"
+            echo ""
+            execute_status false
+        else
+            log_error "Failed to start services"
+            log_warn "Run with --debug flag for details"
+            return 1
+        fi
+    fi
+}
+
+execute_status() {
+    local debug_mode="$1"
+
+    if [ "$debug_mode" = "true" ]; then
+        log_branded "Service status (debug mode)..."
+        echo ""
+        "$WAZUH_CONTROL" status
+    else
+        # Parse wazuh-control status and rebrand
+        log_branded "${PRODUCT_NAME} v${VERSION} - Service Status"
+        echo ""
+
+        # Get raw status output
+        local status_output
+        status_output=$("$WAZUH_CONTROL" status 2>&1 || true)
+
+        # Parse and rebrand each line
+        local all_running=true
+        while IFS= read -r line; do
+            if echo "$line" | grep -q "is running"; then
+                # Extract daemon name
+                local daemon_name=$(echo "$line" | awk '{print $1}')
+                local branded_name=$(get_branded_service_name "$daemon_name")
+                printf "  ${GREEN}●${NC} %-30s ${GREEN}running${NC}\n" "$branded_name"
+            elif echo "$line" | grep -q "is not running"; then
+                local daemon_name=$(echo "$line" | awk '{print $1}')
+                local branded_name=$(get_branded_service_name "$daemon_name")
+                printf "  ${RED}●${NC} %-30s ${RED}stopped${NC}\n" "$branded_name"
+                all_running=false
+            fi
+        done <<< "$status_output"
+
+        echo ""
+        if [ "$all_running" = "true" ]; then
+            log_success "${PRODUCT_NAME} is fully operational"
+        else
+            log_warn "Some services are not running"
+        fi
+    fi
+}
+
+execute_info() {
+    cat << EOF
+
+${BOLD}${CYAN}═══════════════════════════════════════════════════════════${NC}
+${BOLD}          ${PRODUCT_NAME} - System Information${NC}
+${BOLD}${CYAN}═══════════════════════════════════════════════════════════${NC}
+
+  ${BOLD}Product:${NC}      ${PRODUCT_NAME}
+  ${BOLD}Version:${NC}      ${VERSION}
+  ${BOLD}Control:${NC}      cybersentinel-control
+  ${BOLD}Location:${NC}     /usr/local/bin/cybersentinel-control
+
+  ${BOLD}Installation Path:${NC}
+    Base Directory:    /var/ossec
+    Configuration:     /var/ossec/etc/ossec.conf
+    Rules:             /var/ossec/etc/rules/
+    Decoders:          /var/ossec/etc/decoders/
+    Logs:              /var/ossec/logs/
+
+  ${BOLD}Service Management:${NC}
+    Start:             cybersentinel-control start
+    Stop:              cybersentinel-control stop
+    Restart:           cybersentinel-control restart
+    Status:            cybersentinel-control status
+
+  ${BOLD}Debug Mode:${NC}
+    Show raw output:   cybersentinel-control restart --debug
+    View daemon names: cybersentinel-control status --debug
+
+  ${BOLD}Additional Tools:${NC}
+    Agent Control:     /var/ossec/bin/agent_control
+    Log Test:          /var/ossec/bin/wazuh-logtest
+    Manage Agents:     /var/ossec/bin/manage_agents
+    Rule Test:         /var/ossec/bin/wazuh-regex
+
+${BOLD}${CYAN}═══════════════════════════════════════════════════════════${NC}
+
+EOF
+}
+
+# ========================================
+# Main Logic
+# ========================================
+
+main() {
+    # Check if wazuh-control exists
+    if [ ! -x "$WAZUH_CONTROL" ]; then
+        log_error "Wazuh control binary not found: $WAZUH_CONTROL"
+        log_error "This wrapper requires Wazuh to be installed"
+        exit 1
+    fi
+
+    # Parse arguments
+    local command="${1:-}"
+    local debug_mode=false
+
+    # Check for debug flag in any position
+    for arg in "$@"; do
+        if [ "$arg" = "--debug" ] || [ "$arg" = "-d" ]; then
+            debug_mode=true
+        fi
+    done
+
+    # Execute command
+    case "$command" in
+        start)
+            execute_start "$debug_mode"
+            ;;
+        stop)
+            execute_stop "$debug_mode"
+            ;;
+        restart)
+            execute_restart "$debug_mode"
+            ;;
+        status)
+            execute_status "$debug_mode"
+            ;;
+        info)
+            execute_info
+            ;;
+        help|--help|-h)
+            show_usage
+            ;;
+        "")
+            log_error "No command specified"
+            echo ""
+            show_usage
+            exit 1
+            ;;
+        *)
+            log_error "Unknown command: $command"
+            echo ""
+            show_usage
+            exit 1
+            ;;
+    esac
+}
+
+# Execute main
+main "$@"
