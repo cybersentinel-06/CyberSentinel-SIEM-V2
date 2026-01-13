@@ -68,7 +68,7 @@ else
 fi
 
 # ===== PHASE 3: CLONE =====
-[[ -n "${GITHUB_TOKEN:-}" ]] || die "GITHUB_TOKEN required"
+[[ -n "${GITHUB_TOKEN:-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}" ]] || die "GITHUB_TOKEN required"
 
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
