@@ -27,7 +27,7 @@ NC='\033[0m' # No Color
 # Configuration Variables
 # ========================================
 CONTAINER_NAME="cybersentinel-manager"
-GITHUB_TOKEN="${GITHUB_TOKEN:-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}"
+GITHUB_TOKEN="${GITHUB_TOKEN:-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}"
 REPO_OWNER="${REPO_OWNER:-cybersentinel-06}"
 REPO_NAME="${REPO_NAME:-CyberSentinel-SIEM}"
 BRANCH="${BRANCH:-main}"
