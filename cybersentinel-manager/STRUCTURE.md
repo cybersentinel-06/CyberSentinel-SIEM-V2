@@ -141,10 +141,10 @@ See `volumes.md` for backup procedures.
 │  ├─ Volumes: sentinelai-data + shared-alerts (read-only)        │
 │  └─ Function: AI-powered alert analysis using OpenAI            │
 │                                                                   │
-│  Container: fluent-bit                                           │
+│  Container: cybersentinel-forwarder                                           │
 │  ├─ Image: fluent/fluent-bit:3.0                                │
 │  ├─ Volumes: fluent-bit config + shared-alerts (read-only)      │
-│  └─ Function: Forward alerts to Graylog via GELF TCP            │
+│  └─ Function: Forward alerts to CyberSentinel Normalizer via RAW TCP            │
 │                                                                   │
 └─────────────────────────────────────────────────────────────────┘
 

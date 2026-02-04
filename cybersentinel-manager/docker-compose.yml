@@ -88,11 +88,15 @@ services:
       - cybersentinel-network
 
   # =================================================
-  # Graylog
+  # CyberSentinel Normalizer (Graylog)
   # =================================================
-  graylog:
-    image: graylog/graylog:6.1
-    container_name: graylog
+  cybersentinel-normalizer:
+    build:
+      context: normalizer
+      dockerfile: Dockerfile
+    image: cybersentinel/normalizer:6.1
+    container_name: cybersentinel-normalizer
+    hostname: cybersentinel-normalizer
     restart: unless-stopped
     depends_on:
       - mongodb
@@ -102,7 +106,7 @@ services:
       GRAYLOG_PASSWORD_SECRET: ${GRAYLOG_PASSWORD_SECRET}
       GRAYLOG_ROOT_PASSWORD_SHA2: ${GRAYLOG_ROOT_PASSWORD_SHA2}
       GRAYLOG_HTTP_EXTERNAL_URI: http://127.0.0.1:9000/
-      GRAYLOG_MONGODB_URI: mongodb://mongodb:27017/graylog
+      GRAYLOG_MONGODB_URI: mongodb://mongodb:27017/cybersentinel_normalizer
       GRAYLOG_ELASTICSEARCH_HOSTS: http://elasticsearch:9200
 
     ports:
@@ -110,24 +114,28 @@ services:
       - "5555:5555/tcp"
 
     volumes:
-      - graylog-data:/usr/share/graylog/data
-      - graylog-journal:/usr/share/graylog/data/journal
+      - cybersentinel-normalizer-data:/usr/share/graylog/data
+      - cybersentinel-normalizer-journal:/usr/share/graylog/data/journal
 
     networks:
       - cybersentinel-network
 
   # =================================================
-  # Fluent Bit (CUSTOM IMAGE)
+  # CyberSentinel Forwarder (Fluent Bit - CUSTOM IMAGE)
   # =================================================
-  fluent-bit:
-    image: cybersentinel/fluent-bit:1.0
-    container_name: fluent-bit
+  cybersentinel-forwarder:
+    build:
+      context: fluent-bit
+      dockerfile: Dockerfile
+    image: cybersentinel/forwarder:1.0
+    container_name: cybersentinel-forwarder
+    hostname: cybersentinel-forwarder
     restart: unless-stopped
 
     depends_on:
       cybersentinel-manager:
         condition: service_healthy
-      graylog:
+      cybersentinel-normalizer:
         condition: service_started
 
     volumes:
@@ -167,5 +175,5 @@ volumes:
 
   mongodb-data:
   elasticsearch-data:
-  graylog-data:
-  graylog-journal:
+  cybersentinel-normalizer-data:
+  cybersentinel-normalizer-journal:

@@ -127,12 +127,15 @@ services:
       - no-new-privileges:true
 
   # ========================================
-  # Graylog - SIEM Log Management & Analytics
+  # CyberSentinel Normalizer - SIEM Log Management & Analytics
   # ========================================
-  graylog:
-    image: graylog/graylog:6.1
-    container_name: graylog
-    hostname: graylog
+  cybersentinel-normalizer:
+    build:
+      context: normalizer
+      dockerfile: Dockerfile
+    image: cybersentinel/normalizer:6.1
+    container_name: cybersentinel-normalizer
+    hostname: cybersentinel-normalizer
     restart: unless-stopped
 
     depends_on:
@@ -146,11 +149,11 @@ services:
       - GRAYLOG_PASSWORD_SECRET=${GRAYLOG_PASSWORD_SECRET:-forpasswordencryptionatleast64characters1234567890123456789012}
       - GRAYLOG_ROOT_PASSWORD_SHA2=${GRAYLOG_ROOT_PASSWORD_SHA2:-8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918}
       - GRAYLOG_HTTP_EXTERNAL_URI=${GRAYLOG_HTTP_EXTERNAL_URI:-http://127.0.0.1:9000/}
-      - GRAYLOG_MONGODB_URI=mongodb://mongodb:27017/graylog
+      - GRAYLOG_MONGODB_URI=mongodb://mongodb:27017/cybersentinel_normalizer
       - GRAYLOG_ELASTICSEARCH_HOSTS=http://elasticsearch:9200
 
     ports:
-      - "9000:9000/tcp"     # Graylog Web UI
+      - "9000:9000/tcp"     # CyberSentinel Normalizer Web UI
       - "12201:12201/tcp"   # GELF TCP
       - "12201:12201/udp"   # GELF UDP
       - "5555:5555/tcp"     # RAW TCP
@@ -160,8 +163,8 @@ services:
       - "5044:5044/tcp"     # Beats
 
     volumes:
-      - graylog-data:/usr/share/graylog/data
-      - graylog-journal:/usr/share/graylog/data/journal
+      - cybersentinel-normalizer-data:/usr/share/graylog/data
+      - cybersentinel-normalizer-journal:/usr/share/graylog/data/journal
 
     networks:
       - cybersentinel-network
@@ -170,18 +173,21 @@ services:
       - no-new-privileges:true
 
   # ========================================
-  # Fluent Bit - Log Forwarder to Graylog
+  # CyberSentinel Forwarder - Log Forwarder to CyberSentinel Normalizer
   # ========================================
-  fluent-bit:
-    image: fluent/fluent-bit:3.0
-    container_name: fluent-bit
-    hostname: fluent-bit
+  cybersentinel-forwarder:
+    build:
+      context: fluent-bit
+      dockerfile: Dockerfile
+    image: cybersentinel/forwarder:1.0
+    container_name: cybersentinel-forwarder
+    hostname: cybersentinel-forwarder
     restart: unless-stopped
 
     depends_on:
       cybersentinel-manager:
         condition: service_healthy
-      graylog:
+      cybersentinel-normalizer:
         condition: service_started
 
     volumes:
@@ -234,12 +240,12 @@ volumes:
   shared-alerts:
     driver: local
 
-  # Graylog stack volumes
+  # CyberSentinel Normalizer stack volumes
   mongodb-data:
     driver: local
   elasticsearch-data:
     driver: local
-  graylog-data:
+  cybersentinel-normalizer-data:
     driver: local
-  graylog-journal:
+  cybersentinel-normalizer-journal:
     driver: local

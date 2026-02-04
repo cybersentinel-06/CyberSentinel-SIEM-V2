@@ -150,16 +150,16 @@ docker-compose ps
 
 # Should show all services as "Up":
 # - cybersentinel-manager
-# - sentinelai
-# - fluent-bit
+# - cybersentinel-normalizer
+# - cybersentinel-forwarder
 
 # Verify CyberSentinel Manager
 docker-compose exec cybersentinel-manager /var/ossec/bin/wazuh-control status
 
 # Check logs for errors
 docker-compose logs cybersentinel-manager | grep -i error
-docker-compose logs sentinelai | grep -i error
-docker-compose logs fluent-bit | grep -i error
+docker-compose logs cybersentinel-normalizer | grep -i error
+docker-compose logs cybersentinel-forwarder | grep -i error
 ```
 
 ### 8. Test Alert Generation
@@ -206,8 +206,8 @@ If using Graylog for centralized logging:
 #    Port: 12201
 #    Bind address: 0.0.0.0
 
-# 2. Verify Fluent Bit connectivity
-docker-compose exec fluent-bit nc -zv ${GRAYLOG_HOST} ${GRAYLOG_PORT}
+# 2. Verify CyberSentinel Forwarder connectivity
+docker-compose exec cybersentinel-forwarder nc -zv ${GRAYLOG_HOST} ${GRAYLOG_PORT}
 
 # 3. Check logs in Graylog
 #    Search → Last 5 minutes → source:CyberSentinel
@@ -354,7 +354,7 @@ docker-compose up -d
 # Verify:
 # - Agents reconnect
 # - Alerts generate
-# - Logs forward to Graylog
+# - Logs forward to CyberSentinel Normalizer
 ```
 
 ## Common Issues

@@ -47,7 +47,7 @@ Docker-CyberSentinel/
 
 - **CyberSentinel Manager** - Wazuh 4.14.x based SIEM engine
 - **SentinelAI** - OpenAI-powered alert analysis
-- **Fluent Bit** - Log forwarding to Graylog
+- **CyberSentinel Forwarder** - Log forwarding to CyberSentinel Normalizer
 - **No Dashboard** - Manager-only deployment
 - **No Indexer** - External Graylog for visualization
 
@@ -183,7 +183,7 @@ See [README.md](cybersentinel-manager/README.md) for detailed upgrade procedures
 ├─────────────────────────────────────────────────────────────┤
 │                                                               │
 │  ┌──────────────────┐    ┌──────────────┐   ┌────────────┐ │
-│  │ CyberSentinel    │───▶│ SentinelAI   │   │ Fluent Bit │ │
+│  │ CyberSentinel    │───▶│ SentinelAI   │   │ Forwarder │ │
 │  │ Manager          │    │ (OpenAI)     │   │ (Forwarder)│ │
 │  │ (Wazuh 4.14.x)   │    └──────────────┘   └─────┬──────┘ │
 │  └────────┬─────────┘                              │        │
@@ -240,7 +240,7 @@ docker run --rm -v cybersentinel-data:/data -v $(pwd)/backups:/backup \
 CyberSentinel uses open-source components:
 
 - **Wazuh Manager**: GNU GPL v2.0
-- **Fluent Bit**: Apache License 2.0
+- **CyberSentinel Forwarder**: Apache License 2.0
 - **CyberSentinel Customizations**: Your organization's license
 
 ## Security Notice

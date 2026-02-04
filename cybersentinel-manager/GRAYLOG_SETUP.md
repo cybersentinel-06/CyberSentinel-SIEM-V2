@@ -39,10 +39,10 @@ Password: admin
 | Service | Container | Status | Port |
 |---------|-----------|--------|------|
 | Wazuh Manager | cybersentinel-manager | ✅ Healthy | 1514, 1515, 55000 |
-| Graylog | graylog | ✅ Healthy | 9000 (UI), 5555 (RAW) |
+| CyberSentinel Normalizer | cybersentinel-normalizer | ✅ Healthy | 9000 (UI), 5555 (RAW) |
 | MongoDB | mongodb | ✅ Running | 27017 (internal) |
 | Elasticsearch | elasticsearch | ✅ Running | 9200 (internal) |
-| Fluent Bit | fluent-bit | ✅ Running | - |
+| Fluent Bit | cybersentinel-forwarder | ✅ Running | - |
 
 ---
 
@@ -58,8 +58,8 @@ docker exec cybersentinel-manager /var/ossec/bin/wazuh-control status
 # View live alerts
 docker exec cybersentinel-manager tail -f /var/ossec/logs/alerts/alerts.json
 
-# Check Fluent Bit
-docker logs fluent-bit --tail 20
+# Check CyberSentinel Forwarder
+docker logs cybersentinel-forwarder --tail 20
 
 # Check Graylog
 curl http://localhost:9000/api
@@ -79,8 +79,8 @@ nano .env
 # Update this line:
 GRAYLOG_ROOT_PASSWORD_SHA2=<paste_hash_here>
 
-# Restart Graylog
-docker-compose restart graylog
+# Restart CyberSentinel Normalizer
+docker-compose restart cybersentinel-normalizer
 ```
 
 ---
@@ -123,13 +123,13 @@ CyberSentinel Manager
     ↓
 /var/ossec/logs/alerts/alerts.json
     ↓
-Fluent Bit (tail + parse JSON)
+CyberSentinel Forwarder (tail + parse JSON)
     ↓
-Graylog RAW TCP (port 5555)
+CyberSentinel Normalizer RAW TCP (port 5555)
     ↓
 Elasticsearch (storage)
     ↓
-Graylog Web UI (port 9000)
+CyberSentinel Normalizer Web UI (port 9000)
 ```
 
 ---
