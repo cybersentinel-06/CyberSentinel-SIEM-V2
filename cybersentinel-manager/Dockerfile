@@ -71,7 +71,6 @@ RUN (microdnf install -y nano 2>/dev/null \
 #COPY --chown=root:wazuh --chmod=750 config/integrations/custom-alienvault /var/ossec/integrations/custom-alienvault
 #COPY --chown=root:wazuh --chmod=750 config/integrations/custom-alienvault.py /var/ossec/integrations/custom-alienvault.py
 #COPY --chown=root:wazuh --chmod=750 config/integrations/get_malicious.py /var/ossec/integrations/get_malicious.py
-#COPY --chown=root:wazuh --chmod=750 config/integrations/malware_llm_monitor.py /var/ossec/integrations/malware_llm_monitor.py
 # NOTE: Shuffle integration files not present - uncomment if you add them later
 # COPY --chown=root:wazuh --chmod=750 config/integrations/shuffle /var/ossec/integrations/shuffle
 # COPY --chown=root:wazuh --chmod=750 config/integrations/shuffle.py /var/ossec/integrations/shuffle.py

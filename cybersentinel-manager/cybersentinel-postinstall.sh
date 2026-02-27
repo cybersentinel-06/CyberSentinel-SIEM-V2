@@ -27,11 +27,13 @@ NC='\033[0m' # No Color
 # Configuration Variables
 # ========================================
 CONTAINER_NAME="cybersentinel-manager"
-GITHUB_TOKEN="${GITHUB_TOKEN:-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}"
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 REPO_OWNER="${REPO_OWNER:-cybersentinel-06}"
 REPO_NAME="${REPO_NAME:-CyberSentinel-SIEM}"
 BRANCH="${BRANCH:-main}"
 TEMP_DIR="/tmp/cybersentinel-postinstall-$$"
+DOWNLOAD_SUCCESS=0
+DOWNLOAD_FAILED=0
 
 # ========================================
 # Helper Functions
@@ -123,9 +125,20 @@ download_from_github() {
     local url="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/${github_path}"
 
     if curl -sSfL -H "Authorization: token ${GITHUB_TOKEN}" "$url" -o "$destination" 2>/dev/null; then
-        return 0
+        # Validate file has actual content (not empty / error page)
+        if [ -s "$destination" ]; then
+            DOWNLOAD_SUCCESS=$((DOWNLOAD_SUCCESS + 1))
+            return 0
+        else
+            rm -f "$destination"
+            log_warn "Downloaded empty file: $github_path"
+            DOWNLOAD_FAILED=$((DOWNLOAD_FAILED + 1))
+            return 1
+        fi
     else
+        rm -f "$destination"
         log_warn "Failed to download: $github_path"
+        DOWNLOAD_FAILED=$((DOWNLOAD_FAILED + 1))
         return 1
     fi
 }
@@ -135,9 +148,12 @@ download_configurations() {
 
     mkdir -p "$TEMP_DIR"/{config,rules,decoders,integrations}
 
-    # Main configuration
+    # Main configuration — this is critical, fail hard if it doesn't download
     log_info "  → Downloading ossec.conf"
-    download_from_github "SERVER/ossec.conf" "$TEMP_DIR/config/ossec.conf"
+    if ! download_from_github "SERVER/ossec.conf" "$TEMP_DIR/config/ossec.conf"; then
+        log_error "CRITICAL: Failed to download ossec.conf — cannot proceed"
+        exit 1
+    fi
 
     log_success "Configuration files downloaded"
 }
@@ -165,10 +181,10 @@ download_rules() {
 
     for rule in "${rules[@]}"; do
         log_info "  → Downloading $rule"
-        download_from_github "SERVER/RULES/$rule" "$TEMP_DIR/rules/$rule" || true
+        download_from_github "SERVER/RULES/$rule" "$TEMP_DIR/rules/$rule" || log_warn "  ✗ Skipping $rule"
     done
 
-    log_success "Rule files downloaded"
+    log_success "Rule files downloaded ($DOWNLOAD_SUCCESS succeeded so far, $DOWNLOAD_FAILED failed)"
 }
 
 download_decoders() {
@@ -185,10 +201,10 @@ download_decoders() {
 
     for decoder in "${decoders[@]}"; do
         log_info "  → Downloading $decoder"
-        download_from_github "SERVER/DECODERS/$decoder" "$TEMP_DIR/decoders/$decoder" || true
+        download_from_github "SERVER/DECODERS/$decoder" "$TEMP_DIR/decoders/$decoder" || log_warn "  ✗ Skipping $decoder"
     done
 
-    log_success "Decoder files downloaded"
+    log_success "Decoder files downloaded ($DOWNLOAD_SUCCESS succeeded so far, $DOWNLOAD_FAILED failed)"
 }
 
 download_integrations() {
@@ -203,10 +219,10 @@ download_integrations() {
 
     for integration in "${integrations[@]}"; do
         log_info "  → Downloading $integration"
-        download_from_github "SERVER/INTEGRATIONS/$integration" "$TEMP_DIR/integrations/$integration" || true
+        download_from_github "SERVER/INTEGRATIONS/$integration" "$TEMP_DIR/integrations/$integration" || log_warn "  ✗ Skipping $integration"
     done
 
-    log_success "Integration scripts downloaded"
+    log_success "Integration scripts downloaded ($DOWNLOAD_SUCCESS succeeded so far, $DOWNLOAD_FAILED failed)"
 }
 
 # ========================================
@@ -217,6 +233,11 @@ deploy_configurations() {
     log_info "Deploying configurations to container..."
 
     if [ -f "$TEMP_DIR/config/ossec.conf" ]; then
+        # Backup existing ossec.conf before overwriting
+        docker exec "${CONTAINER_NAME}" bash -c \
+            "cp /var/ossec/etc/ossec.conf /var/ossec/etc/ossec.conf.bak 2>/dev/null || true"
+        log_info "  → Backed up existing ossec.conf to ossec.conf.bak"
+
         docker cp "$TEMP_DIR/config/ossec.conf" "${CONTAINER_NAME}:/var/ossec/etc/ossec.conf"
         log_success "  → Deployed ossec.conf"
     fi
@@ -336,8 +357,8 @@ fix_permissions() {
 # Service Management
 # ========================================
 
-restart_wazuh_manager() {
-    log_info "Restarting Wazuh Manager inside container..."
+restart_manager() {
+    log_info "Restarting CyberSentinel Manager inside container..."
 
     # Restart using wazuh-control
     docker exec "${CONTAINER_NAME}" /var/ossec/bin/wazuh-control restart
@@ -347,28 +368,47 @@ restart_wazuh_manager() {
 
     # Verify service is running
     if docker exec "${CONTAINER_NAME}" /var/ossec/bin/wazuh-control status | grep -q "is running"; then
-        log_success "Wazuh Manager restarted successfully"
+        log_success "CyberSentinel Manager restarted successfully"
     else
-        log_warn "Wazuh Manager status check returned unexpected result"
+        log_warn "CyberSentinel Manager status check returned unexpected result"
     fi
 }
 
 verify_deployment() {
     log_info "Verifying deployment..."
 
-    # Check if key files exist inside container
+    local verified=0
+    local missing=0
+
+    # Check critical files inside container
     local critical_files=(
         "/var/ossec/etc/ossec.conf"
         "/var/ossec/etc/rules/local_rules.xml"
+        "/var/ossec/etc/rules/mikrotik_rules.xml"
+        "/var/ossec/etc/decoders/local_decoder.xml"
+        "/var/ossec/etc/decoders/cisco_decoders.xml"
+        "/var/ossec/ruleset/rules/0016-wazuh_rules.xml"
+        "/var/ossec/ruleset/decoders/0005-wazuh_decoders.xml"
+        "/var/ossec/integrations/custom-abuseipdb.py"
     )
 
     for file in "${critical_files[@]}"; do
-        if docker exec "${CONTAINER_NAME}" test -f "$file"; then
-            log_success "  ✓ $file exists"
+        if docker exec "${CONTAINER_NAME}" test -s "$file" 2>/dev/null; then
+            log_success "  ✓ $file"
+            verified=$((verified + 1))
         else
-            log_warn "  ✗ $file not found"
+            log_warn "  ✗ $file not found or empty"
+            missing=$((missing + 1))
         fi
     done
+
+    echo ""
+    log_info "Verification: ${verified} files confirmed, ${missing} missing"
+    log_info "Downloads: ${DOWNLOAD_SUCCESS} succeeded, ${DOWNLOAD_FAILED} failed"
+
+    if [ "$DOWNLOAD_FAILED" -gt 0 ]; then
+        log_warn "Some files failed to download. Check your GITHUB_TOKEN and repository access."
+    fi
 }
 
 # ========================================
@@ -382,11 +422,12 @@ main() {
     echo ""
 
     # Phase 1: Validation
+    log_info "========== Phase 1: Validating Environment =========="
     validate_environment
     echo ""
 
     # Phase 2: Download from GitHub
-    log_info "========== Phase 1: Downloading Files from GitHub =========="
+    log_info "========== Phase 2: Downloading Files from GitHub =========="
     download_configurations
     download_rules
     download_decoders
@@ -394,7 +435,7 @@ main() {
     echo ""
 
     # Phase 3: Deploy to container
-    log_info "========== Phase 2: Deploying Files to Container =========="
+    log_info "========== Phase 3: Deploying Files to Container =========="
     deploy_configurations
     deploy_rules
     deploy_decoders
@@ -402,17 +443,17 @@ main() {
     echo ""
 
     # Phase 4: Fix permissions
-    log_info "========== Phase 3: Fixing Permissions =========="
+    log_info "========== Phase 4: Fixing Permissions =========="
     fix_permissions
     echo ""
 
     # Phase 5: Restart services
-    log_info "========== Phase 4: Restarting Services =========="
-    restart_wazuh_manager
+    log_info "========== Phase 5: Restarting Services =========="
+    restart_manager
     echo ""
 
     # Phase 6: Verification
-    log_info "========== Phase 5: Verification =========="
+    log_info "========== Phase 6: Verification =========="
     verify_deployment
     echo ""
 

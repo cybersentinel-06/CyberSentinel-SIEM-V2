@@ -7,7 +7,7 @@
 # Files
 ACTION-REQUIRED.txt
 cybersentinel-collector.sh
-cybersentinel-deploy-master.sh
+
 cybersentinel-postinstall-local.sh
 example-usage.sh
 FIX-GITHUB-ACCESS.md
