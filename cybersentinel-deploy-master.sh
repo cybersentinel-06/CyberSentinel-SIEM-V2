@@ -437,6 +437,28 @@ deploy_containers() {
 }
 
 # ========================================
+# Fix host bind mount permissions
+# ========================================
+
+fix_bind_mount_permissions() {
+    log_info "Fixing host bind mount permissions..."
+
+    local bind_dirs=("/var/ossec/etc" "/var/ossec/integrations" "/var/ossec/logs")
+
+    # Create missing log subdirs the container expects
+    mkdir -p /var/ossec/logs/{archives,alerts,firewall,wazuh,api,cluster}
+
+    for dir in "${bind_dirs[@]}"; do
+        if [ -d "$dir" ]; then
+            chown -R root:999 "$dir"
+            chmod -R g+w "$dir"
+        fi
+    done
+
+    log_success "Bind mount permissions fixed"
+}
+
+# ========================================
 # Phase 5: Health Checks
 # ========================================
 
@@ -744,7 +766,21 @@ EOF
     echo -e "    Auth: Use CyberSentinel API credentials"
     echo ""
 
+    log_info "Host Bind Mounts (edit directly, restart to apply):"
+    echo ""
+    echo -e "  /var/ossec/etc           → configs (ossec.conf, rules, decoders)"
+    echo -e "  /var/ossec/integrations  → threat intel integrations"
+    echo -e "  /var/ossec/logs          → all logs (ossec.log, alerts, archives)"
+    echo ""
+    echo -e "  After changes: ${CYAN}docker restart $CONTAINER_NAME${NC}"
+    echo ""
+
     log_info "Useful Commands:"
+    echo ""
+    echo -e "  ${CYAN}# Edit configs directly on host${NC}"
+    echo -e "  nano /var/ossec/etc/ossec.conf"
+    echo -e "  nano /var/ossec/etc/rules/local_rules.xml"
+    echo -e "  docker restart $CONTAINER_NAME"
     echo ""
     echo -e "  ${CYAN}# Service control${NC}"
     echo -e "  docker exec $CONTAINER_NAME cybersentinel-control status"
@@ -753,6 +789,7 @@ EOF
     echo -e "  ${CYAN}# View logs${NC}"
     echo -e "  docker logs $CONTAINER_NAME -f"
     echo -e "  docker logs $NORMALIZER_CONTAINER -f"
+    echo -e "  tail -f /var/ossec/logs/ossec.log"
     echo ""
     echo -e "  ${CYAN}# Container management${NC}"
     echo -e "  cd $COMPOSE_DIR && $COMPOSE_CMD ps"
@@ -762,10 +799,10 @@ EOF
 
     log_info "Next Steps:"
     echo ""
-    echo "  1. Configure threat intelligence API keys in ossec.conf"
+    echo "  1. Configure threat intelligence API keys in /var/ossec/etc/ossec.conf"
     echo "  2. Deploy CyberSentinel agents to monitored systems"
-    echo "  3. Customize detection rules"
-    echo "  4. Setup automated backups (see cybersentinel-manager/volumes.md)"
+    echo "  3. Customize detection rules in /var/ossec/etc/rules/"
+    echo "  4. Setup automated backups"
     echo ""
 
     separator
@@ -817,6 +854,14 @@ main() {
 
     # Phase 4: Build and deploy all containers
     deploy_containers
+
+    # Fix bind mount dir permissions (first-run: init populates, we fix ownership)
+    fix_bind_mount_permissions
+
+    # Restart manager to pick up corrected permissions
+    log_info "Restarting manager with corrected permissions..."
+    docker restart "$CONTAINER_NAME" >/dev/null 2>&1
+    sleep 5
 
     # Phase 5: Wait for all services to be healthy
     wait_for_all_healthy

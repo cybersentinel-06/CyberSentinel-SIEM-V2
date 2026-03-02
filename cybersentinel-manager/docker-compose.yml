@@ -23,16 +23,18 @@ services:
       - "514:514/tcp"
 
     volumes:
+      # Host bind mounts — edit directly on host, restart container to apply
+      - /var/ossec/etc:/var/ossec/etc
+      - /var/ossec/integrations:/var/ossec/integrations
+      - /var/ossec/logs:/var/ossec/logs
+      # Named volumes — managed by Docker
       - cybersentinel-data:/var/ossec/data
-      - cybersentinel-logs:/var/ossec/logs
       - cybersentinel-queue:/var/ossec/queue
-      - cybersentinel-etc:/var/ossec/etc
-      - cybersentinel-integrations:/var/ossec/integrations
       - cybersentinel-api-configuration:/var/ossec/api/configuration
       - cybersentinel-agentless:/var/ossec/agentless
+      - cybersentinel-ruleset:/var/ossec/ruleset
       - cybersentinel-wodles:/var/ossec/wodles
       - cybersentinel-stats:/var/ossec/stats
-      - shared-alerts:/var/ossec/logs/alerts
 
     environment:
       INDEXER_URL: https://cybersentinel-manager:9200
@@ -105,7 +107,7 @@ services:
     environment:
       GRAYLOG_PASSWORD_SECRET: ${GRAYLOG_PASSWORD_SECRET}
       GRAYLOG_ROOT_PASSWORD_SHA2: ${GRAYLOG_ROOT_PASSWORD_SHA2}
-      GRAYLOG_HTTP_EXTERNAL_URI: http://127.0.0.1:9000/
+      GRAYLOG_HTTP_EXTERNAL_URI: ${GRAYLOG_HTTP_EXTERNAL_URI:-http://127.0.0.1:9000/}
       GRAYLOG_MONGODB_URI: mongodb://mongodb:27017/cybersentinel_normalizer
       GRAYLOG_ELASTICSEARCH_HOSTS: http://elasticsearch:9200
 
@@ -139,7 +141,7 @@ services:
         condition: service_started
 
     volumes:
-      - shared-alerts:/var/ossec/logs/alerts:ro
+      - /var/ossec/logs/alerts:/var/ossec/logs/alerts:ro
 
     read_only: true
     tmpfs:
@@ -163,15 +165,12 @@ networks:
 # =================================================
 volumes:
   cybersentinel-data:
-  cybersentinel-logs:
   cybersentinel-queue:
-  cybersentinel-etc:
-  cybersentinel-integrations:
   cybersentinel-api-configuration:
   cybersentinel-agentless:
+  cybersentinel-ruleset:
   cybersentinel-wodles:
   cybersentinel-stats:
-  shared-alerts:
 
   mongodb-data:
   elasticsearch-data:
