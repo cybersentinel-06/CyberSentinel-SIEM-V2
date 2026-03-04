@@ -1,0 +1,159 @@
+################################################################################
+# CyberSentinel SIEM — Build & Push to GHCR
+#
+# Builds all 3 custom images and pushes them to GitHub Container Registry:
+#   - ghcr.io/<owner>/cybersentinel-siem/manager:4.14.0
+#   - ghcr.io/<owner>/cybersentinel-siem/normalizer:6.1
+#   - ghcr.io/<owner>/cybersentinel-siem/forwarder:1.0
+#
+# Required GitHub Secrets:
+#   - CONFIG_REPO_TOKEN: PAT with 'repo' scope for accessing CyberSentinel-SIEM
+#                        (config files repo). Not needed if configs are committed
+#                        to this repo already.
+#
+# GHCR authentication uses the automatic GITHUB_TOKEN (no extra setup needed).
+################################################################################
+
+name: Build & Push CyberSentinel SIEM
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cybersentinel-manager/**'
+      - '.github/workflows/build-push-ghcr.yml'
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: 'Force rebuild all images'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/cybersentinel-siem
+
+jobs:
+  # ====================================================
+  # Step 1: Fetch configs from CyberSentinel-SIEM repo
+  # ====================================================
+  fetch-configs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v4
+
+      - name: Fetch custom configs from CyberSentinel-SIEM repo
+        env:
+          GITHUB_TOKEN: ${{ secrets.CONFIG_REPO_TOKEN }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: CyberSentinel-SIEM
+          BRANCH: main
+        working-directory: cybersentinel-manager
+        run: |
+          # Skip fetch if configs already exist in repo
+          if ls config/*.conf config/rules/*.xml config/decoders/*.xml 2>/dev/null | head -1 > /dev/null 2>&1; then
+            echo "Config files already present in repo — skipping fetch"
+          else
+            echo "Fetching configs from ${REPO_OWNER}/${REPO_NAME}..."
+            chmod +x fetch-configs.sh
+            ./fetch-configs.sh
+          fi
+
+      - name: Upload config artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cybersentinel-configs
+          path: cybersentinel-manager/config/
+          retention-days: 1
+
+  # ====================================================
+  # Step 2: Build & Push all images
+  # ====================================================
+  build-and-push:
+    needs: fetch-configs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        include:
+          - name: manager
+            context: cybersentinel-manager
+            dockerfile: cybersentinel-manager/Dockerfile
+            tag: "4.14.0"
+          - name: normalizer
+            context: cybersentinel-manager/normalizer
+            dockerfile: cybersentinel-manager/normalizer/Dockerfile
+            tag: "6.1"
+          - name: forwarder
+            context: cybersentinel-manager/fluent-bit
+            dockerfile: cybersentinel-manager/fluent-bit/Dockerfile
+            tag: "1.0"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download config artifacts (manager only)
+        if: matrix.name == 'manager'
+        uses: actions/download-artifact@v4
+        with:
+          name: cybersentinel-configs
+          path: cybersentinel-manager/config/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
+          tags: |
+            type=raw,value=${{ matrix.tag }}
+            type=raw,value=latest
+            type=sha,prefix=${{ matrix.tag }}-
+
+      - name: Build and push ${{ matrix.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ====================================================
+  # Step 3: Summary
+  # ====================================================
+  summary:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deployment summary
+        run: |
+          echo "## CyberSentinel SIEM Images Pushed to GHCR" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | Tag |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-----|" >> $GITHUB_STEP_SUMMARY
+          echo "| \`ghcr.io/${{ github.repository_owner }}/cybersentinel-siem/manager\` | \`4.14.0\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`ghcr.io/${{ github.repository_owner }}/cybersentinel-siem/normalizer\` | \`6.1\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`ghcr.io/${{ github.repository_owner }}/cybersentinel-siem/forwarder\` | \`1.0\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Deploy on a fresh server:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "curl -sSL https://raw.githubusercontent.com/${{ github.repository_owner }}/CyberSentinel-SIEM-V2/main/cybersentinel-deploy-ghcr.sh | sudo bash" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

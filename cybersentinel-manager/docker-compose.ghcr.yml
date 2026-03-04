@@ -1,0 +1,183 @@
+################################################################################
+# CyberSentinel SIEM — Docker Compose (GHCR Pull Mode)
+#
+# Uses pre-built images from GitHub Container Registry.
+# No local build required — just pull and run.
+#
+# Usage:
+#   docker compose -f docker-compose.ghcr.yml pull
+#   docker compose -f docker-compose.ghcr.yml up -d
+#
+# Before first run:
+#   1. Copy .env.example to .env and configure
+#   2. Set vm.max_map_count: sudo sysctl -w vm.max_map_count=262144
+#   3. Log in to GHCR: echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
+################################################################################
+
+version: '3.8'
+
+services:
+  # =================================================
+  # CyberSentinel Manager (Pre-built from GHCR)
+  # =================================================
+  cybersentinel-manager:
+    image: ghcr.io/${GHCR_OWNER:-cybersentinel-06}/cybersentinel-siem/manager:4.14.0
+    container_name: cybersentinel-manager
+    hostname: cybersentinel-manager
+    restart: unless-stopped
+
+    ports:
+      - "1514:1514/tcp"
+      - "1515:1515/tcp"
+      - "55000:55000/tcp"
+      - "514:514/udp"
+      - "514:514/tcp"
+
+    volumes:
+      # Host bind mounts — for live config editing after deployment
+      - /var/ossec/etc:/var/ossec/etc
+      - /var/ossec/integrations:/var/ossec/integrations
+      - /var/ossec/logs:/var/ossec/logs
+      # Named volumes — managed by Docker
+      - cybersentinel-data:/var/ossec/data
+      - cybersentinel-queue:/var/ossec/queue
+      - cybersentinel-api-configuration:/var/ossec/api/configuration
+      - cybersentinel-agentless:/var/ossec/agentless
+      - cybersentinel-ruleset:/var/ossec/ruleset
+      - cybersentinel-wodles:/var/ossec/wodles
+      - cybersentinel-stats:/var/ossec/stats
+
+    environment:
+      INDEXER_URL: https://cybersentinel-manager:9200
+      INDEXER_USERNAME: admin
+      INDEXER_PASSWORD: ${INDEXER_PASSWORD:-SecurePassword123!}
+      FILEBEAT_SSL_VERIFICATION_MODE: none
+
+    healthcheck:
+      test: ["CMD-SHELL", "/var/ossec/bin/wazuh-control status | grep -q 'is running'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - cybersentinel-network
+
+  # =================================================
+  # MongoDB
+  # =================================================
+  mongodb:
+    image: mongo:8.0.5
+    container_name: mongodb
+    restart: unless-stopped
+    volumes:
+      - mongodb-data:/data/db
+    networks:
+      - cybersentinel-network
+
+  # =================================================
+  # Elasticsearch (Graylog backend)
+  # =================================================
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch-oss:7.10.2
+    container_name: elasticsearch
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    networks:
+      - cybersentinel-network
+
+  # =================================================
+  # CyberSentinel Normalizer (Pre-built from GHCR)
+  # =================================================
+  cybersentinel-normalizer:
+    image: ghcr.io/${GHCR_OWNER:-cybersentinel-06}/cybersentinel-siem/normalizer:6.1
+    container_name: cybersentinel-normalizer
+    hostname: cybersentinel-normalizer
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+      - elasticsearch
+
+    environment:
+      GRAYLOG_PASSWORD_SECRET: ${GRAYLOG_PASSWORD_SECRET}
+      GRAYLOG_ROOT_PASSWORD_SHA2: ${GRAYLOG_ROOT_PASSWORD_SHA2}
+      GRAYLOG_HTTP_EXTERNAL_URI: ${GRAYLOG_HTTP_EXTERNAL_URI:-http://127.0.0.1:9000/}
+      GRAYLOG_MONGODB_URI: mongodb://mongodb:27017/cybersentinel_normalizer
+      GRAYLOG_ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+
+    ports:
+      - "9000:9000"
+      - "5555:5555/tcp"
+
+    volumes:
+      - cybersentinel-normalizer-data:/usr/share/graylog/data
+      - cybersentinel-normalizer-journal:/usr/share/graylog/data/journal
+
+    networks:
+      - cybersentinel-network
+
+  # =================================================
+  # CyberSentinel Forwarder (Pre-built from GHCR)
+  # =================================================
+  cybersentinel-forwarder:
+    image: ghcr.io/${GHCR_OWNER:-cybersentinel-06}/cybersentinel-siem/forwarder:1.0
+    container_name: cybersentinel-forwarder
+    hostname: cybersentinel-forwarder
+    restart: unless-stopped
+
+    depends_on:
+      cybersentinel-manager:
+        condition: service_healthy
+      cybersentinel-normalizer:
+        condition: service_started
+
+    volumes:
+      - /var/ossec/logs/alerts:/var/ossec/logs/alerts:ro
+
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=50m
+
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - cybersentinel-network
+
+# =================================================
+# Network
+# =================================================
+networks:
+  cybersentinel-network:
+    driver: bridge
+
+# =================================================
+# Volumes
+# =================================================
+volumes:
+  cybersentinel-data:
+  cybersentinel-queue:
+  cybersentinel-api-configuration:
+  cybersentinel-agentless:
+  cybersentinel-ruleset:
+  cybersentinel-wodles:
+  cybersentinel-stats:
+
+  mongodb-data:
+  elasticsearch-data:
+  cybersentinel-normalizer-data:
+  cybersentinel-normalizer-journal:

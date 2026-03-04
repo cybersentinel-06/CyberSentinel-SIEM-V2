@@ -1,6 +1,13 @@
 # CyberSentinel Manager Dockerfile
 # Based on official Wazuh Manager 4.14.x
-# Production-ready, upgrade-safe Docker deployment
+# All custom configs, rules, decoders, and integrations are baked into the image.
+#
+# Build locally:
+#   1. Run: GITHUB_TOKEN='ghp_xxx' ./fetch-configs.sh
+#   2. Run: docker build -t ghcr.io/cybersentinel-06/cybersentinel-siem/manager:4.14.0 .
+#
+# CI build (GitHub Actions):
+#   Configs are fetched automatically during the workflow.
 
 ARG WAZUH_VERSION=4.14.0
 FROM wazuh/wazuh-manager:${WAZUH_VERSION}
@@ -8,84 +15,104 @@ FROM wazuh/wazuh-manager:${WAZUH_VERSION}
 LABEL maintainer="CyberSentinel Security Team"
 LABEL description="CyberSentinel Manager - Production SIEM Platform"
 LABEL version="1.0.0"
-LABEL wazuh.version="${WAZUH_VERSION}"
+LABEL org.opencontainers.image.source="https://github.com/cybersentinel-06/CyberSentinel-SIEM-V2"
+LABEL org.opencontainers.image.title="CyberSentinel Manager"
+LABEL org.opencontainers.image.description="CyberSentinel SIEM Manager with baked-in rules, decoders, and integrations"
 
 # ========================================
 # Build-time Configuration
 # ========================================
-
-# Switch to root for configuration
 USER root
 
 # ========================================
-# Install System Utilities (Build-time Only)
+# Install System Utilities
 # ========================================
-# Install nano text editor for runtime configuration management
-# Uses fallback chain to handle different base image package managers
 RUN (microdnf install -y nano 2>/dev/null \
     || yum install -y nano 2>/dev/null \
     || dnf install -y nano 2>/dev/null \
-    || echo "WARNING: Could not install nano - no compatible package manager found") \
+    || echo "WARNING: Could not install nano") \
     && (microdnf clean all 2>/dev/null || yum clean all 2>/dev/null || dnf clean all 2>/dev/null || true)
 
 # ========================================
-# Copy Custom Configuration Files
+# Bake CyberSentinel Control Wrapper
 # ========================================
-
-# Main OSSEC configuration
-#COPY --chown=root:wazuh --chmod=640 config/ossec.conf /var/ossec/etc/ossec.conf
-
-# Custom Rules (applied in /etc/rules/)
-#COPY --chown=root:wazuh --chmod=640 config/rules/local_rules.xml /var/ossec/etc/rules/local_rules.xml
-#COPY --chown=root:wazuh --chmod=640 config/rules/misp_threat_intel.xml /var/ossec/etc/rules/misp_threat_intel.xml
-#COPY --chown=root:wazuh --chmod=640 config/rules/chavecloak_rules.xml /var/ossec/etc/rules/chavecloak_rules.xml
-#COPY --chown=root:wazuh --chmod=640 config/rules/alienOTX.xml /var/ossec/etc/rules/alienOTX.xml
-#COPY --chown=root:wazuh --chmod=640 config/rules/mikrotik_rules.xml /var/ossec/etc/rules/mikrotik_rules.xml
-#COPY --chown=root:wazuh --chmod=640 config/rules/hp_router_rules.xml /var/ossec/etc/rules/hp_router_rules.xml
-#COPY --chown=root:wazuh --chmod=640 config/rules/cisco_rules.xml /var/ossec/etc/rules/cisco_rules.xml
-# NOTE: Comment out placeholder override files - uncomment only if you have actual override content
-# COPY --chown=root:wazuh --chmod=640 config/rules/0015-ossec_rules.xml /var/ossec/etc/rules/0015-ossec_rules.xml
-# COPY --chown=root:wazuh --chmod=640 config/rules/0016-wazuh_rules.xml /var/ossec/etc/rules/0016-wazuh_rules.xml
-# COPY --chown=root:wazuh --chmod=640 config/rules/0475-IDS_IPS_rules.xml /var/ossec/etc/rules/0475-IDS_IPS_rules.xml
-# COPY --chown=root:wazuh --chmod=640 config/rules/0490-virustotal_rules.xml /var/ossec/etc/rules/0490-virustotal_rules.xml
-
-# Custom Decoders
-#COPY --chown=root:wazuh --chmod=640 config/decoders/local_decoder.xml /var/ossec/etc/decoders/local_decoder.xml
-#COPY --chown=root:wazuh --chmod=640 config/decoders/mikrotik_decoders.xml /var/ossec/etc/decoders/mikrotik_decoders.xml
-#COPY --chown=root:wazuh --chmod=640 config/decoders/hp_router_decoders.xml /var/ossec/etc/decoders/hp_router_decoders.xml
-#COPY --chown=root:wazuh --chmod=640 config/decoders/cisco_decoders.xml /var/ossec/etc/decoders/cisco_decoders.xml
-
-# Ruleset Overrides (replace default Wazuh rules)
-# NOTE: Only copy these if you have actual override files
-# Comment out these lines if using template/placeholder files
-# COPY --chown=root:wazuh --chmod=640 config/ruleset/rules/0016-wazuh_rules.xml /var/ossec/ruleset/rules/0016-wazuh_rules.xml
-# COPY --chown=root:wazuh --chmod=640 config/ruleset/rules/0015-ossec_rules.xml /var/ossec/ruleset/rules/0015-ossec_rules.xml
-# COPY --chown=root:wazuh --chmod=640 config/ruleset/rules/0475-suricata_rules.xml /var/ossec/ruleset/rules/0475-suricata_rules.xml
-# COPY --chown=root:wazuh --chmod=640 config/ruleset/rules/0490-virustotal_rules.xml /var/ossec/ruleset/rules/0490-virustotal_rules.xml
-
-# Ruleset Decoder Overrides
-# COPY --chown=root:wazuh --chmod=640 config/ruleset/decoders/0005-wazuh_decoders.xml /var/ossec/ruleset/decoders/0005-wazuh_decoders.xml
-
-# Integration Scripts
-#COPY --chown=root:wazuh --chmod=750 config/integrations/custom-abuseipdb.py /var/ossec/integrations/custom-abuseipdb.py
-#COPY --chown=root:wazuh --chmod=750 config/integrations/custom-alienvault /var/ossec/integrations/custom-alienvault
-#COPY --chown=root:wazuh --chmod=750 config/integrations/custom-alienvault.py /var/ossec/integrations/custom-alienvault.py
-#COPY --chown=root:wazuh --chmod=750 config/integrations/get_malicious.py /var/ossec/integrations/get_malicious.py
-# NOTE: Shuffle integration files not present - uncomment if you add them later
-# COPY --chown=root:wazuh --chmod=750 config/integrations/shuffle /var/ossec/integrations/shuffle
-# COPY --chown=root:wazuh --chmod=750 config/integrations/shuffle.py /var/ossec/integrations/shuffle.py
+COPY cybersentinel-control /usr/local/bin/cybersentinel-control
+RUN chmod 755 /usr/local/bin/cybersentinel-control \
+    && chown root:root /usr/local/bin/cybersentinel-control
 
 # ========================================
-# Runtime Configuration
+# Bake Main Configuration
 # ========================================
+# ossec.conf — the core SIEM configuration
+COPY config/ossec.conf /var/ossec/etc/ossec.conf
+RUN chown root:wazuh /var/ossec/etc/ossec.conf \
+    && chmod 640 /var/ossec/etc/ossec.conf
 
-# Ensure correct ownership of critical directories
-#RUN chown -R wazuh:wazuh /var/ossec/logs \
-#    && chown -R wazuh:wazuh /var/ossec/queue \
-#    && chown -R root:wazuh /var/ossec/etc \
-#    && chown -R root:wazuh /var/ossec/integrations
+# ========================================
+# Bake Custom Rules (/var/ossec/etc/rules/)
+# ========================================
+# Copy all custom rule XML files into etc/rules/
+COPY config/rules/ /tmp/custom-rules/
+RUN if ls /tmp/custom-rules/*.xml 1>/dev/null 2>&1; then \
+        cp /tmp/custom-rules/*.xml /var/ossec/etc/rules/ \
+        && chown root:wazuh /var/ossec/etc/rules/*.xml \
+        && chmod 640 /var/ossec/etc/rules/*.xml; \
+    fi \
+    && rm -rf /tmp/custom-rules
 
-# Create alerts directory with proper permissions
+# ========================================
+# Bake Ruleset Overrides (/var/ossec/ruleset/rules/)
+# ========================================
+# These override the default Wazuh rules
+COPY config/ruleset/rules/ /tmp/ruleset-rules/
+RUN if ls /tmp/ruleset-rules/*.xml 1>/dev/null 2>&1; then \
+        cp /tmp/ruleset-rules/*.xml /var/ossec/ruleset/rules/ \
+        # Special case: 0475-IDS_IPS_rules.xml replaces 0475-suricata_rules.xml
+        && if [ -f /var/ossec/ruleset/rules/0475-IDS_IPS_rules.xml ]; then \
+            mv /var/ossec/ruleset/rules/0475-IDS_IPS_rules.xml /var/ossec/ruleset/rules/0475-suricata_rules.xml; \
+        fi \
+        && chown root:wazuh /var/ossec/ruleset/rules/*.xml \
+        && chmod 640 /var/ossec/ruleset/rules/*.xml; \
+    fi \
+    && rm -rf /tmp/ruleset-rules
+
+# ========================================
+# Bake Custom Decoders (/var/ossec/etc/decoders/)
+# ========================================
+COPY config/decoders/ /tmp/custom-decoders/
+RUN if ls /tmp/custom-decoders/*.xml 1>/dev/null 2>&1; then \
+        # 0005-wazuh_decoders.xml goes to ruleset/decoders/ (override)
+        if [ -f /tmp/custom-decoders/0005-wazuh_decoders.xml ]; then \
+            cp /tmp/custom-decoders/0005-wazuh_decoders.xml /var/ossec/ruleset/decoders/0005-wazuh_decoders.xml \
+            && chown root:wazuh /var/ossec/ruleset/decoders/0005-wazuh_decoders.xml \
+            && chmod 640 /var/ossec/ruleset/decoders/0005-wazuh_decoders.xml; \
+        fi \
+        # All other decoders go to etc/decoders/
+        && for f in /tmp/custom-decoders/*.xml; do \
+            fname=$(basename "$f"); \
+            if [ "$fname" != "0005-wazuh_decoders.xml" ]; then \
+                cp "$f" "/var/ossec/etc/decoders/$fname"; \
+            fi; \
+        done \
+        && chown root:wazuh /var/ossec/etc/decoders/*.xml \
+        && chmod 640 /var/ossec/etc/decoders/*.xml; \
+    fi \
+    && rm -rf /tmp/custom-decoders
+
+# ========================================
+# Bake Integration Scripts (/var/ossec/integrations/)
+# ========================================
+COPY config/integrations/ /tmp/custom-integrations/
+RUN if ls /tmp/custom-integrations/* 1>/dev/null 2>&1; then \
+        cp /tmp/custom-integrations/* /var/ossec/integrations/ \
+        && chown root:wazuh /var/ossec/integrations/custom-* /var/ossec/integrations/get_malicious* 2>/dev/null \
+        && chmod 750 /var/ossec/integrations/custom-* /var/ossec/integrations/get_malicious* 2>/dev/null; \
+    fi \
+    && rm -rf /tmp/custom-integrations
+
+# ========================================
+# Runtime Directory Setup
+# ========================================
 RUN mkdir -p /var/ossec/logs/alerts \
     && chown wazuh:wazuh /var/ossec/logs/alerts \
     && chmod 750 /var/ossec/logs/alerts
@@ -97,16 +124,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
     CMD /var/ossec/bin/wazuh-control status | grep -q 'is running' || exit 1
 
 # ========================================
-# Entrypoint & Command
+# Expose Ports
 # ========================================
-# Use default Wazuh entrypoint
-# ENTRYPOINT ["/entrypoint.sh"]
-
-# Expose required ports
 EXPOSE 1514/tcp 1515/tcp 55000/tcp 514/udp 514/tcp
-
-# Return to wazuh user (if the base image supports it)
-# USER wazuh
-
-# Note: The official wazuh-manager image runs as root by default
-# This is required for proper operation of OSSEC components

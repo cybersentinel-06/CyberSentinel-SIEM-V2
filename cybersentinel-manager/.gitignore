@@ -63,6 +63,20 @@ Desktop.ini
 secrets/
 *.secret
 
+# Downloaded config files (fetched by fetch-configs.sh, not committed)
+config/*.conf
+config/rules/*.xml
+config/decoders/*.xml
+config/integrations/*
+config/ruleset/rules/*.xml
+config/ruleset/decoders/*.xml
+!config/.gitkeep
+!config/rules/.gitkeep
+!config/decoders/.gitkeep
+!config/integrations/.gitkeep
+!config/ruleset/rules/.gitkeep
+!config/ruleset/decoders/.gitkeep
+
 # Local testing
 test/
 tmp/
