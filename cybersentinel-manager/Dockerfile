@@ -24,6 +24,10 @@ LABEL org.opencontainers.image.description="CyberSentinel SIEM Manager with bake
 # ========================================
 USER root
 
+# Set timezone to IST
+ENV TZ=Asia/Kolkata
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
 # ========================================
 # Install System Utilities
 # ========================================

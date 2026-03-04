@@ -3,7 +3,7 @@
 #
 # Builds all 3 custom images and pushes them to GitHub Container Registry:
 #   - ghcr.io/<owner>/cybersentinel-siem/manager:4.14.0
-#   - ghcr.io/<owner>/cybersentinel-siem/normalizer:6.1
+#   - ghcr.io/<owner>/cybersentinel-siem/normalizer:6.3.9
 #   - ghcr.io/<owner>/cybersentinel-siem/forwarder:1.0
 #
 # Required GitHub Secrets:
@@ -88,7 +88,7 @@ jobs:
           - name: normalizer
             context: cybersentinel-manager/normalizer
             dockerfile: cybersentinel-manager/normalizer/Dockerfile
-            tag: "6.1"
+            tag: "6.3.9"
           - name: forwarder
             context: cybersentinel-manager/fluent-bit
             dockerfile: cybersentinel-manager/fluent-bit/Dockerfile

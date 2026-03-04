@@ -56,7 +56,7 @@ BRANCH="${BRANCH:-main}"
 
 # Image references
 MANAGER_IMAGE="ghcr.io/${GHCR_OWNER}/cybersentinel-siem/manager:4.14.0"
-NORMALIZER_IMAGE="ghcr.io/${GHCR_OWNER}/cybersentinel-siem/normalizer:6.1"
+NORMALIZER_IMAGE="ghcr.io/${GHCR_OWNER}/cybersentinel-siem/normalizer:6.3.9"
 FORWARDER_IMAGE="ghcr.io/${GHCR_OWNER}/cybersentinel-siem/forwarder:1.0"
 
 # ========================================

@@ -37,6 +37,7 @@ services:
       - cybersentinel-stats:/var/ossec/stats
 
     environment:
+      TZ: Asia/Kolkata
       INDEXER_URL: https://cybersentinel-manager:9200
       INDEXER_USERNAME: admin
       INDEXER_PASSWORD: ${INDEXER_PASSWORD:-SecurePassword123!}
@@ -66,6 +67,8 @@ services:
     image: mongo:8.0.5
     container_name: mongodb
     restart: unless-stopped
+    environment:
+      TZ: Asia/Kolkata
     volumes:
       - mongodb-data:/data/db
     networks:
@@ -79,6 +82,7 @@ services:
     container_name: elasticsearch
     restart: unless-stopped
     environment:
+      TZ: Asia/Kolkata
       discovery.type: single-node
       ES_JAVA_OPTS: "-Xms512m -Xmx512m"
     volumes:
@@ -96,7 +100,7 @@ services:
     build:
       context: normalizer
       dockerfile: Dockerfile
-    image: cybersentinel/normalizer:6.1
+    image: cybersentinel/normalizer:6.3.9
     container_name: cybersentinel-normalizer
     hostname: cybersentinel-normalizer
     restart: unless-stopped
@@ -105,6 +109,7 @@ services:
       - elasticsearch
 
     environment:
+      TZ: Asia/Kolkata
       GRAYLOG_PASSWORD_SECRET: ${GRAYLOG_PASSWORD_SECRET}
       GRAYLOG_ROOT_PASSWORD_SHA2: ${GRAYLOG_ROOT_PASSWORD_SHA2}
       GRAYLOG_HTTP_EXTERNAL_URI: ${GRAYLOG_HTTP_EXTERNAL_URI:-http://127.0.0.1:9000/}
@@ -133,6 +138,8 @@ services:
     container_name: cybersentinel-forwarder
     hostname: cybersentinel-forwarder
     restart: unless-stopped
+    environment:
+      TZ: Asia/Kolkata
 
     depends_on:
       cybersentinel-manager:

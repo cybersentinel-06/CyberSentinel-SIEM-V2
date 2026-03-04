@@ -6,6 +6,9 @@ LABEL maintainer="CyberSentinel <support@cybersentinel.ai>" \
       version="1.0" \
       description="CyberSentinel Forwarder - Fluent Bit-based log forwarding for the CyberSentinel SIEM platform"
 
+# Set timezone to IST
+ENV TZ=Asia/Kolkata
+
 COPY fluent-bit.conf /fluent-bit/etc/fluent-bit.conf
 COPY parsers.conf /fluent-bit/etc/parsers.conf
 COPY timestamp.lua /fluent-bit/etc/timestamp.lua
