@@ -104,26 +104,49 @@ prompt_github_token() {
     separator
 
     if [ -n "$GITHUB_TOKEN" ]; then
-        log_success "GitHub Token: Set (from environment)"
-        return 0
+        log_info "GitHub Token: Set (from environment)"
+    else
+        log_info "A GitHub Personal Access Token is REQUIRED to pull images from GHCR."
+        log_info "Get a token at: https://github.com/settings/tokens"
+        log_info "Required scope: read:packages"
+        echo ""
+
+        while true; do
+            read -r -p "$(echo -e "${YELLOW}Enter your GitHub token: ${NC}")" token_input
+            echo ""
+            if [ -n "$token_input" ]; then
+                GITHUB_TOKEN="$token_input"
+                break
+            else
+                log_error "GitHub token is required for GHCR access."
+            fi
+        done
     fi
 
-    log_info "A GitHub Personal Access Token is REQUIRED to pull images from GHCR."
-    log_info "Get a token at: https://github.com/settings/tokens"
-    log_info "Required scope: read:packages"
-    echo ""
+    # Validate the token against GitHub API
+    log_info "Validating GitHub token..."
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+        -H "Authorization: token ${GITHUB_TOKEN}" \
+        "https://api.github.com/user" 2>/dev/null)
 
-    while true; do
-        read -r -p "$(echo -e "${YELLOW}Enter your GitHub token: ${NC}")" token_input
-        echo ""
-        if [ -n "$token_input" ]; then
-            GITHUB_TOKEN="$token_input"
-            log_success "GitHub Token: Set"
-            break
-        else
-            log_error "GitHub token is required for GHCR access."
-        fi
-    done
+    if [ "$http_code" = "200" ]; then
+        local username
+        username=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" \
+            "https://api.github.com/user" 2>/dev/null | grep '"login"' | head -1 | cut -d'"' -f4)
+        log_success "GitHub Token: Valid (authenticated as ${username})"
+    elif [ "$http_code" = "401" ]; then
+        log_error "GitHub Token is INVALID or EXPIRED (HTTP 401 Unauthorized)"
+        log_error "Generate a new token at: https://github.com/settings/tokens"
+        log_error "Required scope: read:packages"
+        exit 1
+    elif [ "$http_code" = "403" ]; then
+        log_error "GitHub Token is FORBIDDEN (HTTP 403) — token may lack required scopes"
+        log_error "Ensure the token has 'read:packages' scope"
+        exit 1
+    else
+        log_warn "Could not validate token (HTTP ${http_code}) — proceeding anyway"
+    fi
     echo ""
 }
 
