@@ -295,8 +295,17 @@ start_containers() {
     cd "$DEPLOY_DIR"
 
     # Create host bind mount directories
+    # Wazuh UID=1000, GID(wazuh)=999 inside the container
     mkdir -p /var/ossec/{etc,integrations,logs}
     mkdir -p /var/ossec/logs/{archives,alerts,firewall,wazuh,api,cluster}
+
+    # Set correct ownership BEFORE starting containers
+    # /var/ossec/etc and /integrations: root:999 (wazuh group) with group write
+    chown -R root:999 /var/ossec/etc /var/ossec/integrations 2>/dev/null || true
+    chmod -R g+w /var/ossec/etc /var/ossec/integrations 2>/dev/null || true
+    # /var/ossec/logs: owned by wazuh user (1000:999) — analysisd writes here
+    chown -R 1000:999 /var/ossec/logs 2>/dev/null || true
+    chmod -R 770 /var/ossec/logs 2>/dev/null || true
 
     log_info "Starting all containers..."
     if $COMPOSE_CMD up -d; then
@@ -305,10 +314,6 @@ start_containers() {
         log_error "Failed to start containers"
         exit 1
     fi
-
-    # Fix bind mount permissions
-    chown -R root:999 /var/ossec/etc /var/ossec/integrations /var/ossec/logs 2>/dev/null || true
-    chmod -R g+w /var/ossec/etc /var/ossec/integrations /var/ossec/logs 2>/dev/null || true
 
     echo ""
     $COMPOSE_CMD ps

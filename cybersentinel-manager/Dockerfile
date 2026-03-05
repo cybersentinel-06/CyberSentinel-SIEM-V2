@@ -117,9 +117,9 @@ RUN if ls /tmp/custom-integrations/* 1>/dev/null 2>&1; then \
 # ========================================
 # Runtime Directory Setup
 # ========================================
-RUN mkdir -p /var/ossec/logs/alerts \
-    && chown wazuh:wazuh /var/ossec/logs/alerts \
-    && chmod 750 /var/ossec/logs/alerts
+RUN mkdir -p /var/ossec/logs/{alerts,archives,firewall,wazuh,api,cluster} \
+    && chown -R wazuh:wazuh /var/ossec/logs \
+    && chmod -R 770 /var/ossec/logs
 
 # ========================================
 # Health Check
