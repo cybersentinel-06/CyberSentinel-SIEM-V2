@@ -143,6 +143,12 @@ done
 log_info "Downloading ruleset decoder overrides..."
 download_file "SERVER/DECODERS/0005-wazuh_decoders.xml" "$CONFIG_DIR/ruleset/decoders/0005-wazuh_decoders.xml" || true
 
+# Also place in config/decoders/ where Dockerfile picks it up for baking
+if [ -f "$CONFIG_DIR/ruleset/decoders/0005-wazuh_decoders.xml" ]; then
+    cp "$CONFIG_DIR/ruleset/decoders/0005-wazuh_decoders.xml" "$CONFIG_DIR/decoders/0005-wazuh_decoders.xml"
+    log_success "  Copied 0005-wazuh_decoders.xml to config/decoders/ (for Dockerfile)"
+fi
+
 # ========================================
 # Integration Scripts
 # ========================================
